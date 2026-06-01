@@ -1,0 +1,116 @@
+{
+  "id": "com.prestonhager.dns",
+  "name": "DNS Records",
+  "version": "1.0.0",
+  "entry": "Com\\Prestonhager\\Dns\\Plugin",
+  "requires": {
+    "panelPluginApi": "2.0"
+  },
+  "permissions": [
+    "events.subscribe",
+    "config.read",
+    "api.serve",
+    "ui.register",
+    "server.read",
+    "allocation.read",
+    "server.metadata.write",
+    "http.request",
+    "activity.log"
+  ],
+  "clientPermissions": {
+    "records.read": "View DNS records",
+    "records.create": "Create DNS records",
+    "records.update": "Update DNS records and SRV profiles",
+    "records.delete": "Delete DNS records"
+  },
+  "hooks": {
+    "server.installed": "Com\\Prestonhager\\Dns\\Listeners\\OnServerInstalled",
+    "server.deleting": "Com\\Prestonhager\\Dns\\Listeners\\OnServerDeleting"
+  },
+  "api": {
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/servers/{server}/records",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\RecordsController@index",
+        "permission": "records.read"
+      },
+      {
+        "method": "POST",
+        "path": "/servers/{server}/records",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\RecordsController@store",
+        "permission": "records.create"
+      },
+      {
+        "method": "PATCH",
+        "path": "/servers/{server}/records/{recordId}",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\RecordsController@update",
+        "permission": "records.update"
+      },
+      {
+        "method": "DELETE",
+        "path": "/servers/{server}/records/{recordId}",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\RecordsController@destroy",
+        "permission": "records.delete"
+      },
+      {
+        "method": "GET",
+        "path": "/servers/{server}/srv-profiles",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SrvProfilesController@index",
+        "permission": "records.read"
+      },
+      {
+        "method": "PUT",
+        "path": "/servers/{server}/srv-profiles",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SrvProfilesController@update",
+        "permission": "records.update"
+      },
+      {
+        "method": "POST",
+        "path": "/servers/{server}/srv-profiles/sync",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SrvProfilesController@sync",
+        "permission": "records.update"
+      }
+    ]
+  },
+  "ui": {
+    "server": {
+      "path": "/dns",
+      "name": "DNS",
+      "bundle": "assets/dns.js",
+      "permission": "records.read",
+      "exact": true
+    }
+  },
+  "config": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "cloudflare_api_token": {
+          "type": "string",
+          "description": "Cloudflare API token with Zone.DNS edit permission"
+        },
+        "zone_id": {
+          "type": "string",
+          "description": "Cloudflare zone ID"
+        },
+        "base_domain": {
+          "type": "string",
+          "description": "Base domain for server hostnames (e.g. example.com)"
+        },
+        "auto_provision_enabled": {
+          "type": "boolean",
+          "description": "Automatically create SRV records when a server is installed"
+        },
+        "default_ttl": {
+          "type": "integer",
+          "description": "Default DNS TTL (1 = automatic for Cloudflare)"
+        },
+        "srv_profiles": {
+          "type": "array",
+          "description": "SRV profile definitions (presets or custom service/proto)"
+        }
+      }
+    }
+  }
+}
