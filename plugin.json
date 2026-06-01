@@ -1,7 +1,7 @@
 {
   "id": "com.prestonhager.dns",
   "name": "DNS Records",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "entry": "Com\\Prestonhager\\Dns\\Plugin",
   "requires": {
     "panelPluginApi": "2.0"
@@ -80,6 +80,12 @@
       "bundle": "assets/dns.js",
       "permission": "records.read",
       "exact": true
+    },
+    "admin": {
+      "server": {
+        "name": "DNS",
+        "bundle": "assets/dns.js"
+      }
     }
   },
   "config": {
