@@ -1,7 +1,7 @@
 {
   "id": "com.prestonhager.dns",
   "name": "DNS Records",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "entry": "Com\\Prestonhager\\Dns\\Plugin",
   "requires": {
     "panelPluginApi": "2.0"

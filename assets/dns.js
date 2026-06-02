@@ -14,6 +14,10 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
     }
 
     function can(permission) {
+        if (ctx.hasFullAccess && ctx.hasFullAccess()) {
+            return true;
+        }
+
         var p = perms();
         return p.indexOf('*') !== -1 || p.indexOf(permission) !== -1;
     }
@@ -76,6 +80,10 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         return div.innerHTML;
     }
 
+    function isLightTheme() {
+        return document.body.classList.contains('skin-blue');
+    }
+
     var state = {
         profiles: [],
         enabled: [],
@@ -87,52 +95,19 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         submitting: false,
     };
 
-    var STYLES =
-        '<style>' +
-        '.dns-plugin{background:#1f2937;color:#e5e7eb;font-size:14px;line-height:1.5;padding:1rem 1.25rem;border-radius:6px;}' +
-        '.dns-plugin h2{margin:0 0 1rem;font-size:1.25rem;font-weight:600;color:#f9fafb;}' +
-        '.dns-plugin h3{margin:0 0 .75rem;font-size:1rem;font-weight:600;color:#f3f4f6;}' +
-        '.dns-plugin p{margin:.25rem 0 .75rem;color:#9ca3af;}' +
-        '.dns-plugin code{color:#d1d5db;background:#374151;padding:.1rem .35rem;border-radius:3px;font-size:.85em;}' +
-        '.dns-plugin .dns-card{background:#27272a;border:1px solid #3f3f46;border-radius:6px;padding:1rem 1.25rem;margin-bottom:1.25rem;}' +
-        '.dns-plugin .dns-form-panel{background:#18181b;border:1px solid #52525b;border-radius:6px;padding:1rem 1.25rem;margin:1rem 0;}' +
-        '.dns-plugin .dns-form-panel h4{margin:0 0 1rem;font-size:.95rem;font-weight:600;color:#f9fafb;}' +
-        '.dns-plugin .dns-field{margin-bottom:.75rem;}' +
-        '.dns-plugin .dns-field label{display:block;margin-bottom:.25rem;font-size:.8rem;font-weight:500;color:#d1d5db;}' +
-        '.dns-plugin .dns-field input,.dns-plugin .dns-field select{display:block;width:100%;max-width:360px;padding:.5rem .65rem;' +
-        'background:#111827;border:1px solid #4b5563;border-radius:4px;color:#f9fafb;font-size:14px;}' +
-        '.dns-plugin .dns-field input:focus,.dns-plugin .dns-field select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.25);}' +
-        '.dns-plugin .dns-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem;}' +
-        '.dns-plugin button.dns-btn{display:inline-flex;align-items:center;padding:.45rem .9rem;font-size:.875rem;font-weight:500;' +
-        'border:none!important;border-radius:4px;cursor:pointer;color:#fff!important;background:#2563eb!important;}' +
-        '.dns-plugin button.dns-btn:hover{background:#1d4ed8!important;}' +
-        '.dns-plugin button.dns-btn:disabled{opacity:.55;cursor:not-allowed;}' +
-        '.dns-plugin button.dns-btn-secondary{color:#f9fafb!important;background:#4b5563!important;}' +
-        '.dns-plugin button.dns-btn-secondary:hover{background:#374151!important;}' +
-        '.dns-plugin button.dns-btn-danger{color:#fff!important;background:#b91c1c!important;}' +
-        '.dns-plugin button.dns-btn-danger:hover{background:#991b1b!important;}' +
-        '.dns-plugin button.dns-btn-sm{padding:.3rem .6rem;font-size:.8rem;}' +
-        '.dns-plugin table{width:100%;border-collapse:collapse;margin-top:.75rem;}' +
-        '.dns-plugin th,.dns-plugin td{border:1px solid #3f3f46;padding:.55rem .65rem;text-align:left;}' +
-        '.dns-plugin th{background:#374151;color:#f9fafb;font-weight:600;font-size:.8rem;}' +
-        '.dns-plugin td{background:#1f2937;color:#e5e7eb;}' +
-        '.dns-plugin .dns-empty{color:#9ca3af;font-style:italic;}' +
-        '.dns-plugin .dns-error{color:#fca5a5;background:#450a0a;border:1px solid #7f1d1d;border-radius:4px;padding:.5rem .75rem;margin-bottom:1rem;}' +
-        '.dns-plugin .profile-row{display:flex;align-items:center;gap:.5rem;margin:.35rem 0;}' +
-        '.dns-plugin .profile-row input[type=checkbox]{width:auto;max-width:none;accent-color:#2563eb;}' +
-        '.dns-plugin .profile-row label{margin:0;color:#e5e7eb;cursor:pointer;}' +
-        '</style>';
+    function pluginClass() {
+        return isLightTheme() ? 'ptero-plugin ptero-plugin--on-light' : 'ptero-plugin';
+    }
 
     function render() {
         root.innerHTML =
-            '<div class="dns-plugin">' +
-            STYLES +
+            '<div class="' +
+            pluginClass() +
+            '">' +
             '<h2>DNS Records</h2>' +
-            (state.error ? '<div class="dns-error" role="alert">' + escapeHtml(state.error) + '</div>' : '') +
-            (state.loading ? '<p class="dns-empty">Loading…</p>' : renderContent()) +
+            (state.error ? '<div class="ptero-alert ptero-alert--danger" role="alert">' + escapeHtml(state.error) + '</div>' : '') +
+            (state.loading ? '<p class="ptero-muted">Loading…</p>' : renderContent()) +
             '</div>';
-
-        bindEvents();
     }
 
     function renderContent() {
@@ -145,19 +120,19 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         }
 
         var html =
-            '<div class="dns-card"><h3>SRV Profiles</h3>' +
+            '<div class="ptero-plugin-box"><h3>SRV Profiles</h3>' +
             '<p>Enable game/service SRV records (Minecraft TCP, Factorio UDP, etc.) for this server.</p>';
 
         if (state.profiles.length === 0) {
             html +=
-                '<p class="dns-empty">No SRV profiles configured. Add <code>srv_profiles</code> in Admin → Plugins → Settings.</p>';
+                '<p class="ptero-muted">No SRV profiles configured. Add <code>srv_profiles</code> in Admin → Plugins → Settings.</p>';
         }
 
         state.profiles.forEach(function (profile) {
             var checked = state.enabled.indexOf(profile.id) !== -1 ? ' checked' : '';
             var disabled = can('records.update') ? '' : ' disabled';
             html +=
-                '<div class="profile-row">' +
+                '<div class="ptero-profile-row">' +
                 '<input type="checkbox" data-profile-id="' +
                 escapeHtml(profile.id) +
                 '"' +
@@ -177,9 +152,9 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
 
         if (can('records.update') && state.profiles.length > 0) {
             html +=
-                '<div class="dns-actions">' +
-                '<button type="button" class="dns-btn" data-action="save-profiles">Save profiles</button>' +
-                '<button type="button" class="dns-btn dns-btn-secondary" data-action="sync-profiles">Sync SRV records</button>' +
+                '<div class="ptero-plugin-actions">' +
+                '<button type="button" class="ptero-btn ptero-btn--primary" data-action="save-profiles">Save profiles</button>' +
+                '<button type="button" class="ptero-btn ptero-btn--secondary" data-action="sync-profiles">Sync SRV records</button>' +
                 '</div>';
         }
 
@@ -187,16 +162,16 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
     }
 
     function renderRecordsSection() {
-        var html = '<div class="dns-card"><h3>Records</h3>';
+        var html = '<div class="ptero-plugin-box"><h3>Records</h3>';
 
         if (can('records.create')) {
-            html += '<div class="dns-actions">';
+            html += '<div class="ptero-plugin-actions">';
             if (!state.showRecordForm) {
                 html +=
-                    '<button type="button" class="dns-btn" data-action="toggle-record-form">Add record</button>';
+                    '<button type="button" class="ptero-btn ptero-btn--primary" data-action="toggle-record-form">Add record</button>';
             } else {
                 html +=
-                    '<button type="button" class="dns-btn dns-btn-secondary" data-action="toggle-record-form">Cancel</button>';
+                    '<button type="button" class="ptero-btn ptero-btn--secondary" data-action="toggle-record-form">Cancel</button>';
             }
             html += '</div>';
         }
@@ -205,10 +180,10 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
             html += renderRecordForm();
         }
 
-        html += '<table><thead><tr><th>Type</th><th>Name</th><th>Details</th><th></th></tr></thead><tbody>';
+        html += '<table class="ptero-table"><thead><tr><th>Type</th><th>Name</th><th>Details</th><th></th></tr></thead><tbody>';
 
         if (state.records.length === 0) {
-            html += '<tr><td colspan="4" class="dns-empty">No records yet.</td></tr>';
+            html += '<tr><td colspan="4" class="ptero-muted">No records yet.</td></tr>';
         } else {
             state.records.forEach(function (record) {
                 var details = record.content || '';
@@ -236,7 +211,7 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
 
                 if (can('records.delete')) {
                     html +=
-                        '<button type="button" class="dns-btn dns-btn-danger dns-btn-sm" data-action="delete-record" data-id="' +
+                        '<button type="button" class="ptero-btn ptero-btn--danger ptero-btn--sm" data-action="delete-record" data-id="' +
                         escapeHtml(record.cloudflare_id) +
                         '">Delete</button>';
                 }
@@ -253,30 +228,30 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         var type = f.type || 'A';
 
         return (
-            '<div class="dns-form-panel" id="dns-record-form">' +
+            '<div class="ptero-plugin-panel" id="dns-record-form">' +
             '<h4>New DNS record</h4>' +
-            '<div class="dns-field"><label for="dns-type">Type</label>' +
-            '<select id="dns-type">' +
+            '<div class="ptero-field"><label class="ptero-label" for="dns-type">Type</label>' +
+            '<select class="ptero-select" id="dns-type">' +
             ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV']
                 .map(function (t) {
                     return '<option value="' + t + '"' + (type === t ? ' selected' : '') + '>' + t + '</option>';
                 })
                 .join('') +
             '</select></div>' +
-            '<div class="dns-field"><label for="dns-name">Name</label>' +
-            '<input id="dns-name" type="text" placeholder="subdomain or FQDN" value="' +
+            '<div class="ptero-field"><label class="ptero-label" for="dns-name">Name</label>' +
+            '<input class="ptero-input" id="dns-name" type="text" placeholder="subdomain or FQDN" value="' +
             escapeHtml(f.name || '') +
             '"></div>' +
             '<div id="dns-type-fields">' +
             renderTypeFields(type) +
             '</div>' +
-            '<div class="dns-actions">' +
-            '<button type="button" class="dns-btn" data-action="submit-record"' +
+            '<div class="ptero-plugin-actions">' +
+            '<button type="button" class="ptero-btn ptero-btn--primary" data-action="submit-record"' +
             (state.submitting ? ' disabled' : '') +
             '>' +
             (state.submitting ? 'Creating…' : 'Create record') +
             '</button>' +
-            '<button type="button" class="dns-btn dns-btn-secondary" data-action="toggle-record-form">Cancel</button>' +
+            '<button type="button" class="ptero-btn ptero-btn--secondary" data-action="toggle-record-form">Cancel</button>' +
             '</div></div>'
         );
     }
@@ -284,74 +259,102 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
     function renderTypeFields(type) {
         if (type === 'SRV') {
             return (
-                '<div class="dns-field"><label for="dns-service">Service</label>' +
-                '<input id="dns-service" type="text" placeholder="_minecraft" value="_minecraft"></div>' +
-                '<div class="dns-field"><label for="dns-proto">Protocol</label>' +
-                '<select id="dns-proto"><option value="_tcp">TCP (_tcp)</option><option value="_udp">UDP (_udp)</option></select></div>' +
-                '<div class="dns-field"><label for="dns-target">Target</label>' +
-                '<input id="dns-target" type="text" placeholder="host.example.com"></div>' +
-                '<div class="dns-field"><label for="dns-port">Port</label>' +
-                '<input id="dns-port" type="number" value="25565"></div>' +
-                '<div class="dns-field"><label for="dns-priority">Priority</label>' +
-                '<input id="dns-priority" type="number" value="0"></div>' +
-                '<div class="dns-field"><label for="dns-weight">Weight</label>' +
-                '<input id="dns-weight" type="number" value="5"></div>'
+                '<div class="ptero-field"><label class="ptero-label" for="dns-service">Service</label>' +
+                '<input class="ptero-input" id="dns-service" type="text" placeholder="_minecraft" value="_minecraft"></div>' +
+                '<div class="ptero-field"><label class="ptero-label" for="dns-proto">Protocol</label>' +
+                '<select class="ptero-select" id="dns-proto"><option value="_tcp">TCP (_tcp)</option><option value="_udp">UDP (_udp)</option></select></div>' +
+                '<div class="ptero-field"><label class="ptero-label" for="dns-target">Target</label>' +
+                '<input class="ptero-input" id="dns-target" type="text" placeholder="host.example.com"></div>' +
+                '<div class="ptero-field"><label class="ptero-label" for="dns-port">Port</label>' +
+                '<input class="ptero-input" id="dns-port" type="number" value="25565"></div>' +
+                '<div class="ptero-field"><label class="ptero-label" for="dns-priority">Priority</label>' +
+                '<input class="ptero-input" id="dns-priority" type="number" value="0"></div>' +
+                '<div class="ptero-field"><label class="ptero-label" for="dns-weight">Weight</label>' +
+                '<input class="ptero-input" id="dns-weight" type="number" value="5"></div>'
             );
         }
         if (type === 'MX') {
             return (
-                '<div class="dns-field"><label for="dns-content">Mail server</label>' +
-                '<input id="dns-content" type="text" placeholder="mail.example.com"></div>' +
-                '<div class="dns-field"><label for="dns-priority">Priority</label>' +
-                '<input id="dns-priority" type="number" value="10"></div>'
+                '<div class="ptero-field"><label class="ptero-label" for="dns-content">Mail server</label>' +
+                '<input class="ptero-input" id="dns-content" type="text" placeholder="mail.example.com"></div>' +
+                '<div class="ptero-field"><label class="ptero-label" for="dns-priority">Priority</label>' +
+                '<input class="ptero-input" id="dns-priority" type="number" value="10"></div>'
             );
         }
         return (
-            '<div class="dns-field"><label for="dns-content">Content</label>' +
-            '<input id="dns-content" type="text" placeholder="Record value"></div>'
+            '<div class="ptero-field"><label class="ptero-label" for="dns-content">Content</label>' +
+            '<input class="ptero-input" id="dns-content" type="text" placeholder="Record value"></div>'
         );
     }
 
-    function bindEvents() {
-        root.querySelectorAll('[data-action="save-profiles"]').forEach(function (btn) {
-            btn.onclick = saveProfiles;
-        });
-        root.querySelectorAll('[data-action="sync-profiles"]').forEach(function (btn) {
-            btn.onclick = syncProfiles;
-        });
-        root.querySelectorAll('[data-action="toggle-record-form"]').forEach(function (btn) {
-            btn.onclick = function () {
-                state.showRecordForm = !state.showRecordForm;
-                if (state.showRecordForm) {
-                    state.recordForm = { type: 'A', name: '' };
-                }
-                state.error = '';
-                render();
-            };
-        });
-        root.querySelectorAll('[data-action="delete-record"]').forEach(function (btn) {
-            btn.onclick = function () {
-                deleteRecord(btn.getAttribute('data-id'));
-            };
-        });
-        root.querySelectorAll('[data-action="submit-record"]').forEach(function (btn) {
-            btn.onclick = submitRecord;
-        });
-
-        var typeSelect = root.querySelector('#dns-type');
-        if (typeSelect) {
-            typeSelect.onchange = function () {
-                state.recordForm.type = typeSelect.value;
-                render();
-            };
+    function handleClick(event) {
+        var target = event.target;
+        if (!target || !root.contains(target)) {
+            return;
         }
 
-        var nameInput = root.querySelector('#dns-name');
-        if (nameInput) {
-            nameInput.oninput = function () {
-                state.recordForm.name = nameInput.value;
-            };
+        var actionEl = target.closest('[data-action]');
+        if (!actionEl || !root.contains(actionEl)) {
+            return;
         }
+
+        var action = actionEl.getAttribute('data-action');
+
+        if (action === 'save-profiles') {
+            saveProfiles();
+            return;
+        }
+
+        if (action === 'sync-profiles') {
+            syncProfiles();
+            return;
+        }
+
+        if (action === 'toggle-record-form') {
+            state.showRecordForm = !state.showRecordForm;
+            if (state.showRecordForm) {
+                state.recordForm = { type: 'A', name: '' };
+            }
+            state.error = '';
+            render();
+            return;
+        }
+
+        if (action === 'delete-record') {
+            deleteRecord(actionEl.getAttribute('data-id'));
+            return;
+        }
+
+        if (action === 'submit-record') {
+            submitRecord();
+        }
+    }
+
+    function handleChange(event) {
+        var target = event.target;
+        if (!target || !root.contains(target)) {
+            return;
+        }
+
+        if (target.id === 'dns-type') {
+            state.recordForm.type = target.value;
+            render();
+            return;
+        }
+
+        if (target.id === 'dns-name') {
+            state.recordForm.name = target.value;
+        }
+    }
+
+    function bindRootEvents() {
+        if (root.dataset.pteroEventsBound === 'true') {
+            return;
+        }
+
+        root.dataset.pteroEventsBound = 'true';
+        root.addEventListener('click', handleClick);
+        root.addEventListener('change', handleChange);
     }
 
     function load() {
@@ -465,5 +468,6 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
             });
     }
 
+    bindRootEvents();
     load();
 };
