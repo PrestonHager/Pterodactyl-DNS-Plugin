@@ -18,16 +18,36 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         return p.indexOf('*') !== -1 || p.indexOf(permission) !== -1;
     }
 
+    function csrfToken() {
+        if (ctx.csrfToken) {
+            return ctx.csrfToken;
+        }
+
+        var meta =
+            document.querySelector('meta[name="csrf-token"]') ||
+            document.querySelector('meta[name="_token"]');
+
+        return meta ? meta.getAttribute('content') || '' : '';
+    }
+
     function api(path, options) {
         options = options || {};
         var url = ctx.apiBase + path;
+        var headers = {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+
+        var token = csrfToken();
+        if (token) {
+            headers['X-CSRF-TOKEN'] = token;
+        }
+
         return fetch(url, {
             credentials: 'same-origin',
             method: options.method || 'GET',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-            },
+            headers: headers,
             body: options.body ? JSON.stringify(options.body) : undefined,
         }).then(function (response) {
             if (response.status === 204) {
@@ -69,7 +89,7 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
 
     var STYLES =
         '<style>' +
-        '.dns-plugin{color:#e5e7eb;font-size:14px;line-height:1.5;}' +
+        '.dns-plugin{background:#1f2937;color:#e5e7eb;font-size:14px;line-height:1.5;padding:1rem 1.25rem;border-radius:6px;}' +
         '.dns-plugin h2{margin:0 0 1rem;font-size:1.25rem;font-weight:600;color:#f9fafb;}' +
         '.dns-plugin h3{margin:0 0 .75rem;font-size:1rem;font-weight:600;color:#f3f4f6;}' +
         '.dns-plugin p{margin:.25rem 0 .75rem;color:#9ca3af;}' +
@@ -83,15 +103,15 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         'background:#111827;border:1px solid #4b5563;border-radius:4px;color:#f9fafb;font-size:14px;}' +
         '.dns-plugin .dns-field input:focus,.dns-plugin .dns-field select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.25);}' +
         '.dns-plugin .dns-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem;}' +
-        '.dns-plugin .dns-btn{display:inline-flex;align-items:center;padding:.45rem .9rem;font-size:.875rem;font-weight:500;' +
-        'border:none;border-radius:4px;cursor:pointer;color:#fff;background:#2563eb;}' +
-        '.dns-plugin .dns-btn:hover{background:#1d4ed8;}' +
-        '.dns-plugin .dns-btn:disabled{opacity:.55;cursor:not-allowed;}' +
-        '.dns-plugin .dns-btn-secondary{background:#4b5563;color:#f9fafb;}' +
-        '.dns-plugin .dns-btn-secondary:hover{background:#374151;}' +
-        '.dns-plugin .dns-btn-danger{background:#b91c1c;}' +
-        '.dns-plugin .dns-btn-danger:hover{background:#991b1b;}' +
-        '.dns-plugin .dns-btn-sm{padding:.3rem .6rem;font-size:.8rem;}' +
+        '.dns-plugin button.dns-btn{display:inline-flex;align-items:center;padding:.45rem .9rem;font-size:.875rem;font-weight:500;' +
+        'border:none!important;border-radius:4px;cursor:pointer;color:#fff!important;background:#2563eb!important;}' +
+        '.dns-plugin button.dns-btn:hover{background:#1d4ed8!important;}' +
+        '.dns-plugin button.dns-btn:disabled{opacity:.55;cursor:not-allowed;}' +
+        '.dns-plugin button.dns-btn-secondary{color:#f9fafb!important;background:#4b5563!important;}' +
+        '.dns-plugin button.dns-btn-secondary:hover{background:#374151!important;}' +
+        '.dns-plugin button.dns-btn-danger{color:#fff!important;background:#b91c1c!important;}' +
+        '.dns-plugin button.dns-btn-danger:hover{background:#991b1b!important;}' +
+        '.dns-plugin button.dns-btn-sm{padding:.3rem .6rem;font-size:.8rem;}' +
         '.dns-plugin table{width:100%;border-collapse:collapse;margin-top:.75rem;}' +
         '.dns-plugin th,.dns-plugin td{border:1px solid #3f3f46;padding:.55rem .65rem;text-align:left;}' +
         '.dns-plugin th{background:#374151;color:#f9fafb;font-weight:600;font-size:.8rem;}' +
