@@ -62,6 +62,17 @@ class ServerDnsState
         return null;
     }
 
+    public function findRecordByProfile(int $serverId, string $profileId): ?array
+    {
+        foreach ($this->dnsRecords($serverId) as $record) {
+            if (($record['profile_id'] ?? null) === $profileId && ($record['type'] ?? '') === 'SRV') {
+                return $record;
+            }
+        }
+
+        return null;
+    }
+
     public function upsertRecord(int $serverId, array $record): void
     {
         $state = $this->all($serverId);

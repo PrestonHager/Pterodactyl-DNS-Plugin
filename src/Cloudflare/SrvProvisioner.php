@@ -6,6 +6,7 @@ use Com\Prestonhager\Dns\Support\Config;
 use Com\Prestonhager\Dns\Support\RecordName;
 use Com\Prestonhager\Dns\Support\ServerDnsState;
 use Com\Prestonhager\Dns\Support\SrvProfile;
+use Pterodactyl\Plugins\Dto\AllocationSummary;
 use Pterodactyl\Plugins\Dto\ServerSummary;
 use Pterodactyl\Plugins\PluginContext;
 
@@ -16,20 +17,14 @@ class SrvProvisioner
         private readonly Config $config,
         private readonly Client $client,
         private readonly ServerDnsState $state,
+        private readonly SrvRecordMatcher $matcher,
     ) {
     }
 
     public function provision(int $serverId, ?array $profileIds = null): void
     {
         $network = $this->context->servers()->getNetworkSummary($serverId);
-        $primary = null;
-
-        foreach ($network->allocations as $allocation) {
-            if ($allocation->isPrimary) {
-                $primary = $allocation;
-                break;
-            }
-        }
+        $primary = $this->primaryAllocation($network->allocations);
 
         if (is_null($primary)) {
             return;
@@ -41,13 +36,75 @@ class SrvProvisioner
         }
 
         $label = RecordName::labelFromServer($network->server);
-        $aFqdn = RecordName::fqdn($label, $this->config->baseDomain());
+        $baseDomain = $this->config->baseDomain();
+        $aFqdn = RecordName::fqdn($label, $baseDomain);
+        $target = $this->allocationTarget($primary);
+        $zoneId = $this->config->zoneId();
 
-        $this->ensureARecord($serverId, $aFqdn, $primary->ip);
+        $this->ensureARecord($serverId, $aFqdn, $primary->ip, $zoneId);
+
+        $targetCandidates = $this->targetCandidates($target, $primary, $aFqdn, $serverId);
+        $localRecords = $this->state->dnsRecords($serverId);
 
         foreach ($profiles as $profile) {
-            $this->provisionSrvProfile($serverId, $network->server, $profile, $label, $aFqdn, $primary->port);
+            $this->provisionSrvProfile(
+                $serverId,
+                $network->server,
+                $profile,
+                $label,
+                $target,
+                $primary->port,
+                $zoneId,
+                $targetCandidates,
+                $localRecords,
+            );
         }
+    }
+
+    /**
+     * @param AllocationSummary[] $allocations
+     */
+    private function primaryAllocation(array $allocations): ?AllocationSummary
+    {
+        foreach ($allocations as $allocation) {
+            if ($allocation->isPrimary) {
+                return $allocation;
+            }
+        }
+
+        return null;
+    }
+
+    private function allocationTarget(AllocationSummary $allocation): string
+    {
+        return ($allocation->ipAlias !== null && $allocation->ipAlias !== '')
+            ? $allocation->ipAlias
+            : $allocation->ip;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function targetCandidates(string $currentTarget, AllocationSummary $primary, string $aFqdn, int $serverId): array
+    {
+        $candidates = array_filter([
+            $currentTarget,
+            $primary->ip,
+            $primary->ipAlias,
+            $aFqdn,
+            $this->state->aRecordName($serverId),
+        ], fn ($value) => is_string($value) && $value !== '');
+
+        foreach ($this->state->dnsRecords($serverId) as $record) {
+            if (($record['type'] ?? '') === 'SRV') {
+                $stored = $record['target'] ?? ($record['data']['target'] ?? null);
+                if (is_string($stored) && $stored !== '') {
+                    $candidates[] = $stored;
+                }
+            }
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     /**
@@ -84,7 +141,7 @@ class SrvProvisioner
         return $selected;
     }
 
-    private function ensureARecord(int $serverId, string $fqdn, string $ip): void
+    private function ensureARecord(int $serverId, string $fqdn, string $ip, string $zoneId): void
     {
         $existingId = $this->state->aRecordId($serverId);
         $payload = [
@@ -96,13 +153,13 @@ class SrvProvisioner
         ];
 
         if (!is_null($existingId)) {
-            $this->client->updateRecord($existingId, $payload);
+            $this->client->updateRecord($existingId, $payload, $zoneId);
             $this->state->setARecord($serverId, $existingId, $fqdn);
 
             return;
         }
 
-        $result = $this->client->createRecord($payload);
+        $result = $this->client->createRecord($payload, $zoneId);
         $id = (string) ($result['result']['id'] ?? '');
         if ($id !== '') {
             $this->state->setARecord($serverId, $id, $fqdn);
@@ -112,12 +169,17 @@ class SrvProvisioner
                 'name' => $fqdn,
                 'content' => $ip,
                 'profile_id' => null,
+                'zone_id' => $zoneId,
                 'created_at' => now()->toIso8601String(),
                 'updated_at' => now()->toIso8601String(),
             ]);
         }
     }
 
+    /**
+     * @param string[] $targetCandidates
+     * @param array<int, array<string, mixed>> $localRecords
+     */
     private function provisionSrvProfile(
         int $serverId,
         ServerSummary $server,
@@ -125,10 +187,13 @@ class SrvProvisioner
         string $label,
         string $targetHost,
         int $allocationPort,
+        string $zoneId,
+        array $targetCandidates,
+        array $localRecords,
     ): void {
         $port = $profile->port ?? $allocationPort;
         $relative = RecordName::srvRelativeName($profile, $label);
-        $name = RecordName::normalizeName($relative . '.' . $this->config->baseDomain(), $this->config->baseDomain());
+        $name = $relative . '.' . $this->config->baseDomain();
 
         $payload = [
             'type' => 'SRV',
@@ -142,28 +207,29 @@ class SrvProvisioner
                 'priority' => $profile->priority,
                 'weight' => $profile->weight,
                 'port' => $port,
-                'target' => $targetHost,
+                'target' => rtrim($targetHost, '.'),
             ],
         ];
 
-        $existing = null;
-        foreach ($this->state->dnsRecords($serverId) as $record) {
-            if (($record['profile_id'] ?? null) === $profile->id && ($record['type'] ?? '') === 'SRV') {
-                $existing = $record;
-                break;
-            }
-        }
+        $existing = $this->matcher->findExisting(
+            $profile,
+            $name,
+            $port,
+            $targetCandidates,
+            $localRecords,
+            $zoneId,
+        );
 
         if (!is_null($existing) && !empty($existing['cloudflare_id'])) {
-            $result = $this->client->updateRecord((string) $existing['cloudflare_id'], $payload);
-            $mapped = $this->mapSrvResult($result['result'] ?? [], $profile, $port);
+            $result = $this->client->updateRecord((string) $existing['cloudflare_id'], $payload, $zoneId);
+            $mapped = $this->mapSrvResult($result['result'] ?? [], $profile, $port, $targetHost, $zoneId);
             $this->state->upsertRecord($serverId, $mapped);
 
             return;
         }
 
-        $result = $this->client->createRecord($payload);
-        $mapped = $this->mapSrvResult($result['result'] ?? [], $profile, $port);
+        $result = $this->client->createRecord($payload, $zoneId);
+        $mapped = $this->mapSrvResult($result['result'] ?? [], $profile, $port, $targetHost, $zoneId);
         $this->state->upsertRecord($serverId, $mapped);
 
         $this->context->activity()->log('srv-record-provisioned', [
@@ -180,7 +246,7 @@ class SrvProvisioner
      * @param array<string, mixed> $result
      * @return array<string, mixed>
      */
-    private function mapSrvResult(array $result, SrvProfile $profile, int $port): array
+    private function mapSrvResult(array $result, SrvProfile $profile, int $port, string $target, string $zoneId): array
     {
         return [
             'cloudflare_id' => (string) ($result['id'] ?? ''),
@@ -191,7 +257,9 @@ class SrvProvisioner
             'service' => $profile->service,
             'proto' => $profile->proto,
             'port' => $port,
+            'target' => rtrim($target, '.'),
             'label' => $profile->label,
+            'zone_id' => $zoneId,
             'created_at' => now()->toIso8601String(),
             'updated_at' => now()->toIso8601String(),
         ];

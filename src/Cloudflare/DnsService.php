@@ -4,8 +4,10 @@ namespace Com\Prestonhager\Dns\Cloudflare;
 
 use Com\Prestonhager\Dns\Support\Config;
 use Com\Prestonhager\Dns\Support\RecordName;
+use Com\Prestonhager\Dns\Support\ResolvedZoneName;
 use Com\Prestonhager\Dns\Support\ServerDnsState;
 use Com\Prestonhager\Dns\Support\SrvProfile;
+use Com\Prestonhager\Dns\Support\ZoneResolver;
 use Pterodactyl\Plugins\Dto\ServerSummary;
 use Pterodactyl\Plugins\Exceptions\PluginException;
 use Pterodactyl\Plugins\PluginContext;
@@ -17,6 +19,7 @@ class DnsService
         private readonly Config $config,
         private readonly Client $client,
         private readonly ServerDnsState $state,
+        private readonly ZoneResolver $zoneResolver,
     ) {
     }
 
@@ -35,9 +38,9 @@ class DnsService
     public function createRecord(int $serverId, ServerSummary $server, array $input): array
     {
         $type = strtoupper((string) ($input['type'] ?? ''));
-        $payload = $this->buildPayload($type, $input, $server);
-        $result = $this->client->createRecord($payload);
-        $record = $this->mapCloudflareResult($result['result'] ?? [], $input);
+        $built = $this->buildPayload($type, $input, $server, $serverId);
+        $result = $this->client->createRecord($built['payload'], $built['zone_id']);
+        $record = $this->mapCloudflareResult($result['result'] ?? [], $input, $built);
 
         $this->state->upsertRecord($serverId, $record);
         $this->context->activity()->log('dns-record-created', [
@@ -61,9 +64,10 @@ class DnsService
         }
 
         $type = strtoupper((string) ($input['type'] ?? $existing['type'] ?? ''));
-        $payload = $this->buildPayload($type, array_merge($existing, $input), $server, partial: true);
-        $result = $this->client->updateRecord($cloudflareId, $payload);
-        $record = $this->mapCloudflareResult($result['result'] ?? [], array_merge($existing, $input));
+        $built = $this->buildPayload($type, array_merge($existing, $input), $server, $serverId, partial: true);
+        $zoneId = (string) ($existing['zone_id'] ?? $this->config->zoneId());
+        $result = $this->client->updateRecord($cloudflareId, $built['payload'], $zoneId);
+        $record = $this->mapCloudflareResult($result['result'] ?? [], array_merge($existing, $input), $built);
 
         $this->state->upsertRecord($serverId, $record);
         $this->context->activity()->log('dns-record-updated', [
@@ -81,7 +85,8 @@ class DnsService
             throw new PluginException('DNS record not found for this server.');
         }
 
-        $this->client->deleteRecord($cloudflareId);
+        $zoneId = (string) ($existing['zone_id'] ?? $this->config->zoneId());
+        $this->client->deleteRecord($cloudflareId, $zoneId);
 
         if ($this->state->aRecordId($serverId) === $cloudflareId) {
             $state = $this->state->all($serverId);
@@ -103,9 +108,9 @@ class DnsService
             $id = $record['cloudflare_id'] ?? null;
             if (is_string($id) && $id !== '') {
                 try {
-                    $this->client->deleteRecord($id);
+                    $zoneId = (string) ($record['zone_id'] ?? $this->config->zoneId());
+                    $this->client->deleteRecord($id, $zoneId);
                 } catch (PluginException) {
-                    // Best-effort cleanup when record already removed in Cloudflare.
                 }
             }
         }
@@ -113,7 +118,7 @@ class DnsService
         $aRecordId = $this->state->aRecordId($serverId);
         if (!is_null($aRecordId)) {
             try {
-                $this->client->deleteRecord($aRecordId);
+                $this->client->deleteRecord($aRecordId, $this->config->zoneId());
             } catch (PluginException) {
             }
         }
@@ -123,13 +128,27 @@ class DnsService
 
     /**
      * @param array<string, mixed> $input
-     * @return array<string, mixed>
+     * @return array{payload: array<string, mixed>, zone_id: string, resolved: ResolvedZoneName|null}
      */
-    private function buildPayload(string $type, array $input, ServerSummary $server, bool $partial = false): array
-    {
+    private function buildPayload(
+        string $type,
+        array $input,
+        ServerSummary $server,
+        int $serverId,
+        bool $partial = false,
+    ): array {
         $ttl = isset($input['ttl']) ? (int) $input['ttl'] : $this->config->defaultTtl();
-        $baseDomain = $this->config->baseDomain();
-        $name = RecordName::normalizeName((string) ($input['name'] ?? RecordName::fqdn(RecordName::labelFromServer($server), $baseDomain)), $baseDomain);
+        $zoneId = (string) ($input['zone_id'] ?? $this->config->zoneId());
+
+        if ($partial) {
+            $resolved = null;
+            $name = (string) ($input['name'] ?? '');
+        } else {
+            $rawName = (string) ($input['name'] ?? RecordName::labelFromServer($server));
+            $resolved = $this->zoneResolver->resolve($rawName);
+            $name = $resolved->fqdn;
+            $zoneId = $resolved->zoneId;
+        }
 
         $payload = [
             'ttl' => $ttl,
@@ -141,7 +160,7 @@ class DnsService
             $payload['name'] = $name;
         }
 
-        return match ($type) {
+        $payload = match ($type) {
             'A' => array_merge($payload, ['content' => (string) ($input['content'] ?? $input['ip'] ?? '')]),
             'AAAA' => array_merge($payload, ['content' => (string) ($input['content'] ?? '')]),
             'CNAME' => array_merge($payload, ['content' => (string) ($input['content'] ?? $input['target'] ?? '')]),
@@ -150,9 +169,17 @@ class DnsService
                 'content' => (string) ($input['content'] ?? $input['target'] ?? ''),
                 'priority' => (int) ($input['priority'] ?? 10),
             ]),
-            'SRV' => $this->buildSrvPayload($payload, $input, $name, $baseDomain),
+            'SRV' => $partial || is_null($resolved)
+                ? $this->buildSrvPayloadPartial($payload, $input, $serverId)
+                : $this->buildSrvPayload($payload, $input, $resolved, $serverId),
             default => throw new PluginException(sprintf('Unsupported DNS record type "%s".', $type)),
         };
+
+        return [
+            'payload' => $payload,
+            'zone_id' => $zoneId,
+            'resolved' => $resolved,
+        ];
     }
 
     /**
@@ -160,7 +187,54 @@ class DnsService
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
-    private function buildSrvPayload(array $payload, array $input, string $name, string $baseDomain): array
+    private function buildSrvPayloadPartial(array $payload, array $input, int $serverId): array
+    {
+        $data = is_array($input['data'] ?? null) ? $input['data'] : $input;
+
+        $service = (string) ($data['service'] ?? $input['service'] ?? '_minecraft');
+        $proto = (string) ($data['proto'] ?? $input['proto'] ?? '_tcp');
+        $port = (int) ($data['port'] ?? $input['port'] ?? 0);
+        $target = (string) ($data['target'] ?? $input['target'] ?? '');
+
+        if (!str_starts_with($service, '_')) {
+            $service = '_' . $service;
+        }
+        if (!str_starts_with($proto, '_')) {
+            $proto = '_' . $proto;
+        }
+
+        if ($port <= 0) {
+            $port = $this->primaryAllocationPort($serverId);
+        }
+
+        if ($target === '') {
+            $target = $this->primaryAllocationTarget($serverId);
+        }
+
+        $srvData = [
+            'service' => $service,
+            'proto' => $proto,
+            'priority' => (int) ($data['priority'] ?? $input['priority'] ?? 0),
+            'weight' => (int) ($data['weight'] ?? $input['weight'] ?? 5),
+            'port' => $port,
+            'target' => rtrim($target, '.'),
+        ];
+
+        if (isset($data['name']) || isset($input['data']['name'])) {
+            $srvData['name'] = (string) ($data['name'] ?? $input['data']['name'] ?? '');
+        }
+
+        return array_merge($payload, [
+            'data' => $srvData,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function buildSrvPayload(array $payload, array $input, ResolvedZoneName $hostResolved, int $serverId): array
     {
         $data = is_array($input['data'] ?? null) ? $input['data'] : $input;
 
@@ -177,25 +251,31 @@ class DnsService
         }
 
         if ($port <= 0) {
-            throw new PluginException('SRV records require a valid port.');
+            $port = $this->primaryAllocationPort($serverId);
         }
 
         if ($target === '') {
-            throw new PluginException('SRV records require a target hostname.');
+            $target = $this->primaryAllocationTarget($serverId);
         }
+
+        $hostLabel = $hostResolved->relativeLabel === '@'
+            ? $hostResolved->zoneName
+            : $hostResolved->relativeLabel;
 
         $relative = RecordName::srvRelativeName(
             new SrvProfile('custom', 'custom', $service, $proto),
-            $this->relativeLabel($name, $baseDomain)
+            $hostLabel
         );
+
+        $srvName = $relative . '.' . $hostResolved->zoneName;
 
         return array_merge($payload, [
             'type' => 'SRV',
-            'name' => RecordName::normalizeName($relative . '.' . $baseDomain, $baseDomain),
+            'name' => $srvName,
             'data' => [
                 'service' => $service,
                 'proto' => $proto,
-                'name' => $this->relativeLabel($name, $baseDomain),
+                'name' => $hostLabel,
                 'priority' => (int) ($data['priority'] ?? 0),
                 'weight' => (int) ($data['weight'] ?? 5),
                 'port' => $port,
@@ -206,31 +286,59 @@ class DnsService
 
     /**
      * @param array<string, mixed> $input
+     * @param array{payload: array<string, mixed>, zone_id: string, resolved: ResolvedZoneName|null} $built
      * @return array<string, mixed>
      */
-    private function mapCloudflareResult(array $result, array $input): array
+    private function mapCloudflareResult(array $result, array $input, array $built): array
     {
-        return [
+        $data = $result['data'] ?? ($input['data'] ?? null);
+        $record = [
             'cloudflare_id' => (string) ($result['id'] ?? ''),
             'type' => (string) ($result['type'] ?? $input['type'] ?? ''),
             'name' => (string) ($result['name'] ?? $input['name'] ?? ''),
             'content' => $result['content'] ?? null,
-            'data' => $result['data'] ?? ($input['data'] ?? null),
+            'data' => $data,
             'ttl' => $result['ttl'] ?? $this->config->defaultTtl(),
             'proxied' => $result['proxied'] ?? false,
             'profile_id' => $input['profile_id'] ?? null,
+            'zone_id' => $built['zone_id'],
             'created_at' => $input['created_at'] ?? now()->toIso8601String(),
             'updated_at' => now()->toIso8601String(),
         ];
-    }
 
-    private function relativeLabel(string $fqdn, string $baseDomain): string
-    {
-        $suffix = '.' . $baseDomain;
-        if (str_ends_with(strtolower($fqdn), strtolower($suffix))) {
-            return substr($fqdn, 0, -strlen($suffix));
+        if (is_array($data)) {
+            $record['port'] = (int) ($data['port'] ?? $input['port'] ?? 0);
+            $record['target'] = (string) ($data['target'] ?? $input['target'] ?? '');
         }
 
-        return $fqdn;
+        return $record;
+    }
+
+    private function primaryAllocationTarget(int $serverId): string
+    {
+        $network = $this->context->servers()->getNetworkSummary($serverId);
+
+        foreach ($network->allocations as $allocation) {
+            if ($allocation->isPrimary) {
+                return ($allocation->ipAlias !== null && $allocation->ipAlias !== '')
+                    ? $allocation->ipAlias
+                    : $allocation->ip;
+            }
+        }
+
+        throw new PluginException('No primary allocation found for this server.');
+    }
+
+    private function primaryAllocationPort(int $serverId): int
+    {
+        $network = $this->context->servers()->getNetworkSummary($serverId);
+
+        foreach ($network->allocations as $allocation) {
+            if ($allocation->isPrimary) {
+                return $allocation->port;
+            }
+        }
+
+        throw new PluginException('No primary allocation found for this server.');
     }
 }

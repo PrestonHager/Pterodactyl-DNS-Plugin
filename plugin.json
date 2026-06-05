@@ -1,7 +1,7 @@
 {
   "id": "com.prestonhager.dns",
   "name": "DNS Records",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "entry": "Com\\Prestonhager\\Dns\\Plugin",
   "requires": {
     "panelPluginApi": "2.0"
@@ -94,7 +94,7 @@
       "properties": {
         "cloudflare_api_token": {
           "type": "string",
-          "description": "Cloudflare API token with Zone.DNS edit permission"
+          "description": "Cloudflare API token with Zone.DNS Edit and Zone.Zone Read permissions"
         },
         "zone_id": {
           "type": "string",

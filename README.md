@@ -7,7 +7,11 @@ Requires the [PrestonHager/panel](https://github.com/PrestonHager/panel) branch 
 ## Features
 
 - Cloudflare DNS integration (A, AAAA, CNAME, MX, TXT, SRV)
-- Server tab UI loaded from this plugin (`assets/dns.js`)
+- **SRV-first** record creation with server-aware defaults (name, target, port)
+- **Smart naming** like Cloudflare: bare labels append `base_domain`; relative names like `mc.games` append the zone; full FQDNs resolve the correct zone (including cross-zone records)
+- **Smart SRV sync** matches existing records by profile, name, port, and target (IP, alias, or hostname)
+- Default SRV target uses the primary allocation **alias** when set, otherwise the allocation **IP**
+- Server tab UI loaded from this plugin (`assets/dns.js`) with dark/light theme support
 - Plugin-owned HTTP API at `/api/plugins/com.prestonhager.dns/...`
 - Multiple SRV service/protocol profiles per server
 - Auto-provision A + SRV records on `server.installed`
@@ -28,6 +32,13 @@ PTERODACTYL_PLUGIN_HTTP_ALLOWED_HOSTS=api.cloudflare.com
 ```
 
 (Default in panel config often includes this host.)
+
+### Cloudflare API token scopes
+
+Create a token with:
+
+- **Zone → DNS → Edit** (create/update/delete records)
+- **Zone → Zone → Read** (list zones for cross-zone FQDN resolution)
 
 ## Admin configuration
 
@@ -69,6 +80,17 @@ Example `plugins.config` JSON (Admin → Plugins → Settings):
 }
 ```
 
+### Smart naming examples
+
+With `base_domain` = `example.com` and default zone configured:
+
+| User enters | Record created at |
+|-------------|-------------------|
+| `mc` | `mc.example.com` (default zone) |
+| `mc.games` | `mc.games.example.com` (default zone) |
+| `mc.example.com` | `mc.example.com` (default zone) |
+| `host.other.com` | `host.other.com` (zone resolved via Cloudflare zones API) |
+
 ### Built-in SRV presets
 
 | Preset ID | Service | Protocol |
@@ -88,8 +110,11 @@ Custom profiles use `"service"` and `"proto"` (`_tcp` or `_udp`). Omit `"port"` 
 
 1. Open a server in the panel.
 2. Click the **DNS** tab (visible when the plugin is enabled and the user has `records.read`).
-3. Enable SRV profiles for that server and click **Sync SRV records**, or add records manually.
-4. On server install, profiles marked `auto_provision: true` create an A record and matching SRV records automatically.
+3. **Add record** defaults to SRV with the server label, allocation target (alias or IP), and port prefilled.
+4. Enable SRV profiles for that server and click **Sync SRV records** to create or reconcile records.
+5. On server install, profiles marked `auto_provision: true` create an A record and matching SRV records automatically.
+
+Sync updates SRV records when the allocation IP, alias, or port changes, and adopts existing Cloudflare SRV records that match the server's target and port.
 
 ## API (plugin-owned)
 
@@ -109,18 +134,26 @@ All routes require client authentication and server access. Base path:
 | PUT | `/servers/{uuid}/srv-profiles` | `records.update` |
 | POST | `/servers/{uuid}/srv-profiles/sync` | `records.update` |
 
+`GET /srv-profiles` includes a `defaults` object with suggested SRV form values for the server.
+
 See panel docs: [plugin-http-api.md](https://github.com/PrestonHager/panel/blob/feat/plugin-manager/docs/plugins/plugin-http-api.md).
 
 ## Manual test checklist
 
-- [ ] Install and enable plugin with valid Cloudflare config
-- [ ] DNS tab appears on a server
+- [ ] Install and enable plugin with valid Cloudflare config (token includes Zone Read + DNS Edit)
+- [ ] DNS tab appears on a server (client and admin views)
+- [ ] Add record form opens with **SRV** selected; name/target/port prefilled
+- [ ] Enter `mc` → creates SRV under `mc.example.com` in default zone
+- [ ] Enter cross-zone FQDN → record created in matching zone; delete works
+- [ ] Primary allocation has alias → SRV target uses alias; sync updates when alias/IP/port changes
+- [ ] Pre-existing SRV in Cloudflare (no local state) → sync adopts and updates
 - [ ] Enable Minecraft + Factorio profiles, sync, verify records in Cloudflare
 - [ ] Create manual TXT record via UI
 - [ ] Delete a record via UI
 - [ ] Create new server → auto SRV + A records appear (when `auto_provision_enabled`)
 - [ ] Delete server → plugin removes tracked Cloudflare records
 - [ ] Subuser with only `records.read` cannot create/delete
+- [ ] Admin (light) and client (dark) UI: inputs, labels, and table text are readable
 
 ## Development
 
