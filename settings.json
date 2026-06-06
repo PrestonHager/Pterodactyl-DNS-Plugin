@@ -52,12 +52,84 @@
     },
     {
       "key": "srv_profiles",
-      "type": "json",
+      "type": "list",
       "label": "SRV Profiles",
-      "description": "Profile definitions for game/service SRV records. Use preset IDs (minecraft-java, factorio, etc.) or custom service/proto objects.",
+      "itemLabel": "Profile",
+      "description": "Profile definitions for game/service SRV records. Choose a preset or leave preset empty and set custom service/proto.",
       "surfaces": ["admin"],
       "storage": "config",
-      "default": []
+      "default": [],
+      "itemFields": [
+        {
+          "key": "id",
+          "type": "string",
+          "label": "Profile ID",
+          "required": true,
+          "placeholder": "minecraft-java"
+        },
+        {
+          "key": "preset",
+          "type": "select",
+          "label": "Preset",
+          "options": [
+            { "value": "minecraft-java", "label": "Minecraft Java" },
+            { "value": "minecraft-bedrock", "label": "Minecraft Bedrock" },
+            { "value": "factorio", "label": "Factorio" },
+            { "value": "terraria", "label": "Terraria" },
+            { "value": "rust", "label": "Rust" },
+            { "value": "valheim", "label": "Valheim" },
+            { "value": "ark", "label": "ARK" },
+            { "value": "mumble", "label": "Mumble" }
+          ]
+        },
+        {
+          "key": "label",
+          "type": "string",
+          "label": "Display Label",
+          "placeholder": "Minecraft Java"
+        },
+        {
+          "key": "service",
+          "type": "string",
+          "label": "Service",
+          "placeholder": "_minecraft",
+          "description": "Required when no preset is selected."
+        },
+        {
+          "key": "proto",
+          "type": "select",
+          "label": "Protocol",
+          "options": [
+            { "value": "_tcp", "label": "TCP" },
+            { "value": "_udp", "label": "UDP" }
+          ]
+        },
+        {
+          "key": "port",
+          "type": "integer",
+          "label": "Port",
+          "min": 1,
+          "description": "Optional. Defaults to the server primary allocation port."
+        },
+        {
+          "key": "priority",
+          "type": "integer",
+          "label": "Priority",
+          "default": 0
+        },
+        {
+          "key": "weight",
+          "type": "integer",
+          "label": "Weight",
+          "default": 5
+        },
+        {
+          "key": "auto_provision",
+          "type": "boolean",
+          "label": "Auto-provision on install",
+          "default": false
+        }
+      ]
     },
     {
       "key": "enabled_profile_ids",

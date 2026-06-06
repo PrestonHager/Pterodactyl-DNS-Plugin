@@ -80,24 +80,15 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         return div.innerHTML;
     }
 
-    function isLightTheme() {
-        if (ctx.theme === 'light') {
-            return true;
+    function pluginClass() {
+        if (ctx.getRootClass && typeof ctx.getRootClass === 'function') {
+            return ctx.getRootClass();
         }
-        if (ctx.theme === 'dark') {
-            return false;
-        }
-        if (document.body.classList.contains('skin-blue')) {
-            return true;
-        }
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-            return true;
-        }
-        return false;
+        return 'ptero-plugin';
     }
 
-    function defaultRecordForm() {
-        var d = state.defaults || {};
+    function defaultRecordForm(defaults) {
+        var d = defaults || state.defaults || {};
         return {
             type: d.record_type || 'SRV',
             name: d.name || '',
@@ -118,13 +109,9 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         loading: true,
         error: '',
         showRecordForm: false,
-        recordForm: defaultRecordForm(),
+        recordForm: defaultRecordForm(null),
         submitting: false,
     };
-
-    function pluginClass() {
-        return isLightTheme() ? 'ptero-plugin ptero-plugin--on-light' : 'ptero-plugin';
-    }
 
     function render() {
         root.innerHTML =
