@@ -1,7 +1,7 @@
 {
   "id": "com.prestonhager.dns",
   "name": "DNS Records",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "entry": "Com\\Prestonhager\\Dns\\Plugin",
   "requires": {
     "panelPluginApi": "2.1"
@@ -18,10 +18,12 @@
     "activity.log"
   ],
   "clientPermissions": {
-    "records.read": "View DNS records",
-    "records.create": "Create DNS records",
+    "subdomain.read": "View server hostname and connection info",
+    "subdomain.update": "Change vanity subdomain or custom domain",
+    "records.read": "View DNS records (admin console)",
+    "records.create": "Create DNS records (admin)",
     "records.update": "Update DNS records and SRV profiles",
-    "records.delete": "Delete DNS records"
+    "records.delete": "Delete DNS records (admin)"
   },
   "http": {
     "allowedHosts": ["api.cloudflare.com"]
@@ -32,6 +34,78 @@
   },
   "api": {
     "routes": [
+      {
+        "method": "GET",
+        "path": "/servers/{server}/subdomain",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@show",
+        "permission": "subdomain.read"
+      },
+      {
+        "method": "PUT",
+        "path": "/servers/{server}/subdomain",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@update",
+        "permission": "subdomain.update"
+      },
+      {
+        "method": "GET",
+        "path": "/servers/{server}/subdomain/check",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@check",
+        "permission": "subdomain.read"
+      },
+      {
+        "method": "POST",
+        "path": "/servers/{server}/subdomain/regenerate",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@regenerate",
+        "permission": "subdomain.update"
+      },
+      {
+        "method": "GET",
+        "path": "/servers/{server}/custom-domain",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@showCustomDomain",
+        "permission": "subdomain.read"
+      },
+      {
+        "method": "PUT",
+        "path": "/servers/{server}/custom-domain",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@updateCustomDomain",
+        "permission": "subdomain.update"
+      },
+      {
+        "method": "POST",
+        "path": "/servers/{server}/custom-domain/verify",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@verifyCustomDomain",
+        "permission": "subdomain.update"
+      },
+      {
+        "method": "GET",
+        "path": "/servers/{server}/nameserver",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@showNameserver",
+        "permission": "subdomain.read"
+      },
+      {
+        "method": "PUT",
+        "path": "/servers/{server}/nameserver",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@updateNameserver",
+        "permission": "subdomain.update"
+      },
+      {
+        "method": "POST",
+        "path": "/servers/{server}/nameserver/verify",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@verifyNameserver",
+        "permission": "subdomain.update"
+      },
+      {
+        "method": "GET",
+        "path": "/admin/nameserver/pending",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@pendingNameserverDelegations",
+        "auth": "admin"
+      },
+      {
+        "method": "POST",
+        "path": "/admin/nameserver/{server}/approve",
+        "handler": "Com\\Prestonhager\\Dns\\Http\\SubdomainController@approveNameserverDelegation",
+        "auth": "admin"
+      },
       {
         "method": "GET",
         "path": "/servers/{server}/records",
@@ -60,19 +134,19 @@
         "method": "GET",
         "path": "/servers/{server}/srv-profiles",
         "handler": "Com\\Prestonhager\\Dns\\Http\\SrvProfilesController@index",
-        "permission": "records.read"
+        "permission": "subdomain.read"
       },
       {
         "method": "PUT",
         "path": "/servers/{server}/srv-profiles",
         "handler": "Com\\Prestonhager\\Dns\\Http\\SrvProfilesController@update",
-        "permission": "records.update"
+        "permission": "subdomain.update"
       },
       {
         "method": "POST",
         "path": "/servers/{server}/srv-profiles/sync",
         "handler": "Com\\Prestonhager\\Dns\\Http\\SrvProfilesController@sync",
-        "permission": "records.update"
+        "permission": "subdomain.update"
       }
     ]
   },
@@ -80,14 +154,14 @@
     "server": {
       "path": "/dns",
       "name": "DNS",
-      "bundle": "assets/dns.js",
-      "permission": "records.read",
+      "bundle": "assets/dns-client.js",
+      "permission": "subdomain.read",
       "exact": true
     },
     "admin": {
       "server": {
         "name": "DNS",
-        "bundle": "assets/dns.js"
+        "bundle": "assets/dns-admin.js"
       }
     }
   },
@@ -118,6 +192,46 @@
         "srv_profiles": {
           "type": "array",
           "description": "SRV profile definitions (presets or custom service/proto)"
+        },
+        "primary_domains": {
+          "type": "array",
+          "description": "Additional primary domains clients may select"
+        },
+        "subdomain_generation": {
+          "type": "string",
+          "description": "Auto hostname strategy: server_slug, random_words, random_hex, uuid_only"
+        },
+        "client_subdomain_policy": {
+          "type": "string",
+          "description": "Client hostname change policy: never, once_on_create, limited, always"
+        },
+        "client_change_limit": {
+          "type": "integer",
+          "description": "Max hostname changes per rolling period when policy is limited"
+        },
+        "client_change_period_hours": {
+          "type": "integer",
+          "description": "Rolling window hours for client change limit"
+        },
+        "reserved_labels": {
+          "type": "array",
+          "description": "Blocked hostname labels"
+        },
+        "min_label_length": {
+          "type": "integer",
+          "description": "Minimum vanity label length"
+        },
+        "max_label_length": {
+          "type": "integer",
+          "description": "Maximum vanity label length"
+        },
+        "allow_custom_domain": {
+          "type": "boolean",
+          "description": "Enable CNAME custom domain verification for clients"
+        },
+        "custom_domain_mode": {
+          "type": "string",
+          "description": "Custom domain modes: cname, nameserver, both"
         }
       }
     }

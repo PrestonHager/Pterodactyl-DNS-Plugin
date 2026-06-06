@@ -75,6 +75,40 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         return '/servers/' + encodeURIComponent(ctx.serverUuid) + suffix;
     }
 
+    function adminApi(path, options) {
+        options = options || {};
+        var url = '/api/plugins-admin/' + PLUGIN_ID + path;
+        var headers = {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        };
+        var token = csrfToken();
+        if (token) {
+            headers['X-CSRF-TOKEN'] = token;
+        }
+        return fetch(url, {
+            credentials: 'same-origin',
+            method: options.method || 'GET',
+            headers: headers,
+            body: options.body ? JSON.stringify(options.body) : undefined,
+        }).then(function (response) {
+            if (response.status === 204) {
+                return null;
+            }
+            return response.json().then(function (data) {
+                if (!response.ok) {
+                    var msg =
+                        (data && data.errors && data.errors[0] && data.errors[0].detail) ||
+                        (data && data.message) ||
+                        'Request failed';
+                    throw new Error(msg);
+                }
+                return data;
+            });
+        });
+    }
+
     function escapeHtml(text) {
         var div = document.createElement('div');
         div.textContent = text == null ? '' : String(text);
@@ -103,6 +137,7 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
     }
 
     var state = {
+        subdomain: null,
         profiles: [],
         enabled: [],
         records: [],
@@ -112,6 +147,9 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         showRecordForm: false,
         recordForm: defaultRecordForm(null),
         submitting: false,
+        adminLabelDraft: '',
+        adminDomainDraft: 'default',
+        adminLocked: false,
     };
 
     function render() {
@@ -119,14 +157,63 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
             '<div class="' +
             pluginClass() +
             '">' +
-            '<h2>DNS Records</h2>' +
+            '<h2>DNS Administration</h2>' +
             (state.error ? '<div class="ptero-alert ptero-alert--danger" role="alert">' + escapeHtml(state.error) + '</div>' : '') +
             (state.loading ? '<p class="ptero-muted">Loading…</p>' : renderContent()) +
             '</div>';
     }
 
     function renderContent() {
-        return renderProfilesSection() + renderRecordsSection();
+        return renderSubdomainSection() + renderProfilesSection() + renderRecordsSection();
+    }
+
+    function renderSubdomainSection() {
+        var sub = state.subdomain || {};
+        var html =
+            '<div class="ptero-plugin-box"><h3>Hostname</h3>' +
+            '<p>Mode: <strong>' +
+            escapeHtml(sub.hostname_mode || 'auto') +
+            '</strong> — FQDN: <code>' +
+            escapeHtml(sub.fqdn || '') +
+            '</code></p>' +
+            '<div class="ptero-field"><label class="ptero-label" for="admin-dns-label">Override label</label>' +
+            '<input class="ptero-input" id="admin-dns-label" type="text" value="' +
+            escapeHtml(state.adminLabelDraft || sub.hostname_label || '') +
+            '"></div>';
+
+        if ((sub.primary_domains || []).length > 0) {
+            html += '<div class="ptero-field"><label class="ptero-label" for="admin-dns-domain">Primary domain</label><select class="ptero-select" id="admin-dns-domain">';
+            (sub.primary_domains || []).forEach(function (d) {
+                var selected = (state.adminDomainDraft || sub.primary_domain) === d.id ? ' selected' : '';
+                html +=
+                    '<option value="' +
+                    escapeHtml(d.id) +
+                    '"' +
+                    selected +
+                    '>' +
+                    escapeHtml(d.domain) +
+                    '</option>';
+            });
+            html += '</select></div>';
+        }
+
+        html +=
+            '<div class="ptero-profile-row">' +
+            '<input type="checkbox" id="admin-dns-locked"' +
+            (state.adminLocked || sub.subdomain_locked ? ' checked' : '') +
+            '>' +
+            '<label for="admin-dns-locked">Lock hostname (block client changes)</label></div>' +
+            '<div class="ptero-plugin-actions">' +
+            '<button type="button" class="ptero-btn ptero-btn--primary" data-action="save-subdomain">Save hostname</button>' +
+            '<button type="button" class="ptero-btn ptero-btn--secondary" data-action="regenerate-subdomain">Regenerate</button>' +
+            '<button type="button" class="ptero-btn ptero-btn--secondary" data-action="sync-profiles">Reconcile SRV</button>' +
+            '</div>' +
+            '<p class="ptero-hint">Changes: ' +
+            escapeHtml(String(sub.label_change_count || 0)) +
+            (sub.last_label_change_at ? ' — last ' + escapeHtml(sub.last_label_change_at) : '') +
+            '</p></div>';
+
+        return html;
     }
 
     function renderProfilesSection() {
@@ -363,6 +450,16 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
 
         if (action === 'submit-record') {
             submitRecord();
+            return;
+        }
+
+        if (action === 'save-subdomain') {
+            saveSubdomain();
+            return;
+        }
+
+        if (action === 'regenerate-subdomain') {
+            regenerateSubdomain();
         }
     }
 
@@ -381,6 +478,18 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         if (target.id === 'dns-name') {
             state.recordForm.name = target.value;
         }
+
+        if (target.id === 'admin-dns-label') {
+            state.adminLabelDraft = target.value;
+        }
+
+        if (target.id === 'admin-dns-domain') {
+            state.adminDomainDraft = target.value;
+        }
+
+        if (target.id === 'admin-dns-locked') {
+            state.adminLocked = target.checked;
+        }
     }
 
     function bindRootEvents() {
@@ -398,12 +507,20 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
         state.error = '';
         render();
 
-        Promise.all([api(serverPath('/srv-profiles')), api(serverPath('/records'))])
+        Promise.all([
+            api(serverPath('/subdomain')),
+            api(serverPath('/srv-profiles')),
+            api(serverPath('/records')),
+        ])
             .then(function (results) {
-                state.profiles = (results[0].attributes && results[0].attributes.profiles) || [];
-                state.enabled = (results[0].attributes && results[0].attributes.enabled) || [];
-                state.defaults = (results[0].attributes && results[0].attributes.defaults) || null;
-                state.records = results[1].data || [];
+                state.subdomain = results[0].attributes || {};
+                state.profiles = (results[1].attributes && results[1].attributes.profiles) || [];
+                state.enabled = (results[1].attributes && results[1].attributes.enabled) || [];
+                state.defaults = (results[1].attributes && results[1].attributes.defaults) || null;
+                state.records = results[2].data || [];
+                state.adminLabelDraft = state.subdomain.hostname_label || '';
+                state.adminDomainDraft = state.subdomain.primary_domain || 'default';
+                state.adminLocked = !!state.subdomain.subdomain_locked;
                 state.loading = false;
                 render();
             })
@@ -505,6 +622,46 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
             });
     }
 
+    function saveSubdomain() {
+        var labelEl = root.querySelector('#admin-dns-label');
+        var domainEl = root.querySelector('#admin-dns-domain');
+        var lockedEl = root.querySelector('#admin-dns-locked');
+        var label = labelEl ? labelEl.value.trim() : state.adminLabelDraft;
+        if (!label) {
+            state.error = 'Label is required.';
+            render();
+            return;
+        }
+        state.error = '';
+        api(serverPath('/subdomain'), {
+            method: 'PUT',
+            body: {
+                label: label,
+                primary_domain: domainEl ? domainEl.value : state.adminDomainDraft,
+                subdomain_locked: lockedEl ? lockedEl.checked : state.adminLocked,
+            },
+        })
+            .then(load)
+            .catch(function (err) {
+                state.error = err.message;
+                render();
+            });
+    }
+
+    function regenerateSubdomain() {
+        if (!confirm('Regenerate hostname? This will rename DNS records for this server.')) {
+            return;
+        }
+        state.error = '';
+        api(serverPath('/subdomain/regenerate'), { method: 'POST', body: {} })
+            .then(load)
+            .catch(function (err) {
+                state.error = err.message;
+                render();
+            });
+    }
+
     bindRootEvents();
     load();
 };
+
