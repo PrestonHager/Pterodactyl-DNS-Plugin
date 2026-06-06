@@ -7,7 +7,12 @@ use Com\Prestonhager\Dns\Cloudflare\DnsService;
 use Com\Prestonhager\Dns\Cloudflare\SrvProvisioner;
 use Com\Prestonhager\Dns\Cloudflare\SrvRecordMatcher;
 use Com\Prestonhager\Dns\Support\Config;
+use Com\Prestonhager\Dns\Support\DnsLookupService;
+use Com\Prestonhager\Dns\Support\DnsPolicy;
+use Com\Prestonhager\Dns\Support\HostnameManager;
+use Com\Prestonhager\Dns\Support\HostnameRegistry;
 use Com\Prestonhager\Dns\Support\ServerDnsState;
+use Com\Prestonhager\Dns\Support\SubdomainValidator;
 use Com\Prestonhager\Dns\Support\ZoneResolver;
 use Pterodactyl\Plugins\PluginContext;
 
@@ -23,6 +28,11 @@ final class Services
         return new ServerDnsState($context);
     }
 
+    public static function dnsPolicy(PluginContext $context): DnsPolicy
+    {
+        return new DnsPolicy();
+    }
+
     public static function client(PluginContext $context): Client
     {
         return new Client($context, self::config($context));
@@ -36,6 +46,38 @@ final class Services
     public static function srvMatcher(PluginContext $context): SrvRecordMatcher
     {
         return new SrvRecordMatcher(self::client($context));
+    }
+
+    public static function hostnameRegistry(PluginContext $context): HostnameRegistry
+    {
+        return new HostnameRegistry($context, self::config($context), self::client($context));
+    }
+
+    public static function subdomainValidator(PluginContext $context): SubdomainValidator
+    {
+        return new SubdomainValidator(
+            self::config($context),
+            self::dnsPolicy($context),
+            self::hostnameRegistry($context),
+            self::state($context),
+        );
+    }
+
+    public static function hostnameManager(PluginContext $context): HostnameManager
+    {
+        return new HostnameManager(
+            $context,
+            self::config($context),
+            self::client($context),
+            self::state($context),
+            self::srvProvisioner($context),
+            self::hostnameRegistry($context),
+        );
+    }
+
+    public static function dnsLookup(PluginContext $context): DnsLookupService
+    {
+        return new DnsLookupService();
     }
 
     public static function dns(PluginContext $context): DnsService

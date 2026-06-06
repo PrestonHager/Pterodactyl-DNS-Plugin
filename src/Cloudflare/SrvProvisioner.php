@@ -21,7 +21,7 @@ class SrvProvisioner
     ) {
     }
 
-    public function provision(int $serverId, ?array $profileIds = null): void
+    public function provision(int $serverId, ?array $profileIds = null, ?string $explicitLabel = null): void
     {
         $network = $this->context->servers()->getNetworkSummary($serverId);
         $primary = $this->primaryAllocation($network->allocations);
@@ -35,11 +35,17 @@ class SrvProvisioner
             return;
         }
 
-        $label = RecordName::labelFromServer($network->server);
-        $baseDomain = $this->config->baseDomain();
+        $primaryDomain = $this->config->resolvePrimaryDomain($this->state->primaryDomainId($serverId));
+        $label = $explicitLabel ?? $this->state->hostnameLabel($serverId);
+        if ($label === null || $label === '') {
+            $label = RecordName::generate($network->server, $this->config->subdomainGeneration());
+            $this->state->initializeHostname($serverId, $label, $primaryDomain->id, 'auto');
+        }
+
+        $baseDomain = $primaryDomain->domain;
         $aFqdn = RecordName::fqdn($label, $baseDomain);
         $target = $this->allocationTarget($primary);
-        $zoneId = $this->config->zoneId();
+        $zoneId = $primaryDomain->zoneId;
 
         $this->ensureARecord($serverId, $aFqdn, $primary->ip, $zoneId);
 
@@ -55,6 +61,7 @@ class SrvProvisioner
                 $target,
                 $primary->port,
                 $zoneId,
+                $baseDomain,
                 $targetCandidates,
                 $localRecords,
             );
@@ -188,12 +195,13 @@ class SrvProvisioner
         string $targetHost,
         int $allocationPort,
         string $zoneId,
+        string $baseDomain,
         array $targetCandidates,
         array $localRecords,
     ): void {
         $port = $profile->port ?? $allocationPort;
         $relative = RecordName::srvRelativeName($profile, $label);
-        $name = $relative . '.' . $this->config->baseDomain();
+        $name = $relative . '.' . $baseDomain;
 
         $payload = [
             'type' => 'SRV',

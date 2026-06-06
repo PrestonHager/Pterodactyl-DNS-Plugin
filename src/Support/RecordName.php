@@ -6,6 +6,16 @@ use Pterodactyl\Plugins\Dto\ServerSummary;
 
 class RecordName
 {
+    public static function generate(ServerSummary $server, string $strategy = 'server_slug'): string
+    {
+        return match ($strategy) {
+            'random_words' => self::randomWordsLabel(),
+            'random_hex' => self::randomHexLabel(),
+            'uuid_only' => self::uuidOnlyLabel($server),
+            default => self::labelFromServer($server),
+        };
+    }
+
     public static function labelFromServer(ServerSummary $server): string
     {
         $base = strtolower($server->name);
@@ -19,6 +29,61 @@ class RecordName
         $suffix = substr(str_replace('-', '', $server->uuid), 0, 8);
 
         return substr($base, 0, 48) . '-' . $suffix;
+    }
+
+    public static function normalizeLabel(string $label): string
+    {
+        return strtolower(trim($label));
+    }
+
+    public static function isValidLabel(string $label, int $minLength = 3, int $maxLength = 32): bool
+    {
+        $label = self::normalizeLabel($label);
+        $length = strlen($label);
+
+        if ($length < $minLength || $length > $maxLength) {
+            return false;
+        }
+
+        if (!preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/', $label)) {
+            return false;
+        }
+
+        if (str_contains($label, '--')) {
+            return false;
+        }
+
+        if (str_starts_with($label, '_') || str_contains($label, '._')) {
+            return false;
+        }
+
+        return !preg_match('/[^\x00-\x7F]/', $label);
+    }
+
+    private static function randomWordsLabel(): string
+    {
+        $words = [
+            'alpha', 'beta', 'gamma', 'delta', 'echo', 'foxtrot', 'golf', 'hotel',
+            'india', 'juliet', 'kilo', 'lima', 'mike', 'nova', 'oscar', 'papa',
+            'quebec', 'romeo', 'sierra', 'tango', 'ultra', 'victor', 'whiskey',
+            'xray', 'yankee', 'zulu', 'amber', 'bronze', 'coral', 'drift', 'ember',
+        ];
+
+        $first = $words[random_int(0, count($words) - 1)];
+        $second = $words[random_int(0, count($words) - 1)];
+        $suffix = substr(bin2hex(random_bytes(2)), 0, 4);
+
+        return $first . '-' . $second . '-' . $suffix;
+    }
+
+    private static function randomHexLabel(): string
+    {
+        return 'srv-' . bin2hex(random_bytes(4));
+    }
+
+    private static function uuidOnlyLabel(ServerSummary $server): string
+    {
+        return substr(str_replace('-', '', $server->uuid), 0, 12);
     }
 
     public static function fqdn(string $label, string $baseDomain): string

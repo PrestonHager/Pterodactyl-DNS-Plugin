@@ -91,8 +91,10 @@ class SrvProfilesController
         $config = Services::config($context);
         $network = $context->servers()->getNetworkSummary($serverId);
         $primary = $this->primaryAllocation($network->allocations);
-        $label = RecordName::labelFromServer($network->server);
-        $baseDomain = $config->baseDomain();
+        $state = Services::state($context);
+        $label = $state->hostnameLabel($serverId) ?? RecordName::labelFromServer($network->server);
+        $primaryDomain = $config->resolvePrimaryDomain($state->primaryDomainId($serverId));
+        $baseDomain = $primaryDomain->domain;
 
         $target = '';
         $port = 25565;

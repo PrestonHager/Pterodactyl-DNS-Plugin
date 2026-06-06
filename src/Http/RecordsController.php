@@ -12,6 +12,8 @@ class RecordsController
 {
     public function index(PluginContext $context, PluginHttpRequest $request): PluginHttpResponse
     {
+        Services::dnsPolicy($context)->ensureAdminDnsAccess($request);
+
         $serverId = $this->requireServerId($request);
         $records = Services::dns($context)->listRecordsForServer($serverId);
 
@@ -23,6 +25,8 @@ class RecordsController
 
     public function store(PluginContext $context, PluginHttpRequest $request): PluginHttpResponse
     {
+        Services::dnsPolicy($context)->ensureAdminDnsAccess($request);
+
         $serverId = $this->requireServerId($request);
         $server = $context->servers()->find($serverId);
         $record = Services::dns($context)->createRecord($serverId, $server, $request->body);
@@ -35,6 +39,8 @@ class RecordsController
 
     public function update(PluginContext $context, PluginHttpRequest $request): PluginHttpResponse
     {
+        Services::dnsPolicy($context)->ensureAdminDnsAccess($request);
+
         $serverId = $this->requireServerId($request);
         $recordId = (string) $request->route('recordId', '');
         $server = $context->servers()->find($serverId);
@@ -48,6 +54,8 @@ class RecordsController
 
     public function destroy(PluginContext $context, PluginHttpRequest $request): PluginHttpResponse
     {
+        Services::dnsPolicy($context)->ensureAdminDnsAccess($request);
+
         $serverId = $this->requireServerId($request);
         $recordId = (string) $request->route('recordId', '');
         Services::dns($context)->deleteRecord($serverId, $recordId);
