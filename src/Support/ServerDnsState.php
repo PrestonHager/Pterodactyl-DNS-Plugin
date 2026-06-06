@@ -8,6 +8,9 @@ class ServerDnsState
 {
     private const STATE_KEY = 'dns_state';
 
+    /** Matches panel PluginSettingsStore::SERVER_SETTINGS_KEY */
+    private const PLUGIN_SETTINGS_KEY = 'plugin_settings';
+
     public function __construct(
         private readonly PluginContext $context,
     ) {
@@ -33,14 +36,28 @@ class ServerDnsState
      */
     public function srvProfileIds(int $serverId): array
     {
+        $settings = $this->pluginSettings($serverId);
+        if (array_key_exists('enabled_profile_ids', $settings) && is_array($settings['enabled_profile_ids'])) {
+            return array_values(array_map('strval', $settings['enabled_profile_ids']));
+        }
+
         return $this->all($serverId)['srv_profile_ids'];
     }
 
+    /**
+     * @param string[] $ids
+     */
     public function setSrvProfileIds(int $serverId, array $ids): void
     {
+        $ids = array_values(array_unique(array_map('strval', $ids)));
+
         $state = $this->all($serverId);
-        $state['srv_profile_ids'] = array_values(array_unique(array_map('strval', $ids)));
+        $state['srv_profile_ids'] = $ids;
         $this->save($serverId, $state);
+
+        $settings = $this->pluginSettings($serverId);
+        $settings['enabled_profile_ids'] = $ids;
+        $this->writePluginSettings($serverId, $settings);
     }
 
     /**
@@ -140,6 +157,24 @@ class ServerDnsState
     public function clear(int $serverId): void
     {
         $this->context->data()->delete('server', $serverId, self::STATE_KEY);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pluginSettings(int $serverId): array
+    {
+        $settings = $this->context->data()->get('server', $serverId, self::PLUGIN_SETTINGS_KEY, []);
+
+        return is_array($settings) ? $settings : [];
+    }
+
+    /**
+     * @param array<string, mixed> $settings
+     */
+    private function writePluginSettings(int $serverId, array $settings): void
+    {
+        $this->context->data()->set('server', $serverId, self::PLUGIN_SETTINGS_KEY, $settings);
     }
 
     /**

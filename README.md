@@ -42,7 +42,9 @@ Create a token with:
 
 ## Admin configuration
 
-Example `plugins.config` JSON (Admin → Plugins → Settings):
+Plugin settings are defined in [`settings.json`](settings.json) and rendered as a structured form under **Admin → Plugins → DNS Records → Settings**. Admin-only fields are stored in encrypted `plugins.config`. Legacy JSON editing remains available under **Advanced JSON**.
+
+Example configuration (also valid as Advanced JSON):
 
 ```json
 {
@@ -104,7 +106,11 @@ With `base_domain` = `example.com` and default zone configured:
 | `ark` | `_ark` | `_udp` |
 | `mumble` | `_mumble` | `_tcp` |
 
-Custom profiles use `"service"` and `"proto"` (`_tcp` or `_udp`). Omit `"port"` to use the server's primary allocation port.
+Custom profiles use `"service"` and `"proto"` (`_tcp` or `_udp`). Omit `"port"` to use the server's primary allocation port. Custom profile IDs configured in **SRV Profiles** can still be enabled from the DNS tab; preset IDs are also available in the client **Settings** sub-tab.
+
+## Client settings
+
+Per-server SRV profile selection is exposed via the panel **Settings** sub-tab at `/server/{id}/dns/settings` (requires `records.update`). Values are stored in server plugin metadata and stay in sync with the DNS tab profile checkboxes.
 
 ## Client usage
 
@@ -140,7 +146,8 @@ See panel docs: [plugin-http-api.md](https://github.com/PrestonHager/panel/blob/
 
 ## Manual test checklist
 
-- [ ] Install and enable plugin with valid Cloudflare config (token includes Zone Read + DNS Edit)
+- [ ] Admin **Plugins → Settings** shows structured form (token, zone, domain, SRV profiles JSON)
+- [ ] Client **DNS → Settings** sub-tab shows enabled SRV profile multiselect
 - [ ] DNS tab appears on a server (client and admin views)
 - [ ] Add record form opens with **SRV** selected; name/target/port prefilled
 - [ ] Enter `mc` → creates SRV under `mc.example.com` in default zone

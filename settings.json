@@ -1,0 +1,83 @@
+{
+  "fields": [
+    {
+      "key": "cloudflare_api_token",
+      "type": "password",
+      "label": "Cloudflare API Token",
+      "description": "Token with Zone.DNS Edit and Zone.Zone Read permissions for your Cloudflare account.",
+      "surfaces": ["admin"],
+      "storage": "config",
+      "required": true,
+      "sensitive": true,
+      "audit": true
+    },
+    {
+      "key": "zone_id",
+      "type": "string",
+      "label": "Default Zone ID",
+      "description": "Cloudflare zone ID used for relative hostnames and auto-provisioned records.",
+      "surfaces": ["admin"],
+      "storage": "config",
+      "required": true,
+      "placeholder": "your-zone-id"
+    },
+    {
+      "key": "base_domain",
+      "type": "string",
+      "label": "Base Domain",
+      "description": "Default zone apex (e.g. example.com). Bare subdomains entered by users are appended to this domain.",
+      "surfaces": ["admin"],
+      "storage": "config",
+      "required": true,
+      "placeholder": "example.com"
+    },
+    {
+      "key": "auto_provision_enabled",
+      "type": "boolean",
+      "label": "Auto-provision on install",
+      "description": "Automatically create A and SRV records when a server finishes installing.",
+      "surfaces": ["admin"],
+      "storage": "config",
+      "default": true
+    },
+    {
+      "key": "default_ttl",
+      "type": "integer",
+      "label": "Default TTL",
+      "description": "Default DNS TTL for new records (1 = automatic for Cloudflare).",
+      "surfaces": ["admin"],
+      "storage": "config",
+      "default": 1,
+      "min": 1
+    },
+    {
+      "key": "srv_profiles",
+      "type": "json",
+      "label": "SRV Profiles",
+      "description": "Profile definitions for game/service SRV records. Use preset IDs (minecraft-java, factorio, etc.) or custom service/proto objects.",
+      "surfaces": ["admin"],
+      "storage": "config",
+      "default": []
+    },
+    {
+      "key": "enabled_profile_ids",
+      "type": "multiselect",
+      "label": "Enabled SRV Profiles",
+      "description": "SRV service profiles enabled for this server. Sync SRV records after changing this list.",
+      "surfaces": ["client"],
+      "storage": "server",
+      "permission": "records.update",
+      "default": [],
+      "options": [
+        { "value": "minecraft-java", "label": "Minecraft Java" },
+        { "value": "minecraft-bedrock", "label": "Minecraft Bedrock" },
+        { "value": "factorio", "label": "Factorio" },
+        { "value": "terraria", "label": "Terraria" },
+        { "value": "rust", "label": "Rust" },
+        { "value": "valheim", "label": "Valheim" },
+        { "value": "ark", "label": "ARK" },
+        { "value": "mumble", "label": "Mumble" }
+      ]
+    }
+  ]
+}
