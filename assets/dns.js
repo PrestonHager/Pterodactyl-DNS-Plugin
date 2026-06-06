@@ -3,7 +3,8 @@ window.PterodactylPlugin_com_prestonhager_dns = function () {
 
     var PLUGIN_ID = 'com.prestonhager.dns';
     var ctx = window.__PterodactylPluginContext;
-    var root = document.getElementById('plugin-root-' + PLUGIN_ID);
+    var rootId = (ctx && ctx.rootId) || ('plugin-root-' + PLUGIN_ID.replace(/\./g, '-'));
+    var root = document.getElementById(rootId);
 
     if (!ctx || !root) {
         return;
