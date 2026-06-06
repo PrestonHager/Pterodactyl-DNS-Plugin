@@ -2,7 +2,7 @@
 
 Manage Cloudflare DNS records from the Pterodactyl panel. Supports full CRUD for common record types, multi-service SRV profiles (Minecraft Java TCP, Factorio UDP, Bedrock UDP, custom games), and automatic SRV provisioning when a server finishes installing.
 
-Requires the [PrestonHager/panel](https://github.com/PrestonHager/panel) branch **`feat/plugin-manager`** with **plugin API v2.0**.
+Requires the [PrestonHager/panel](https://github.com/PrestonHager/panel) branch **`feat/plugin-manager`** with **plugin API v2.1** (`PanelPluginApi::VERSION = 2.1`).
 
 ## Features
 
@@ -20,7 +20,7 @@ Requires the [PrestonHager/panel](https://github.com/PrestonHager/panel) branch 
 
 ## Installation
 
-1. Run a panel build that includes plugin API v2 (`PanelPluginApi::VERSION = 2.0`).
+1. Run a panel build that includes plugin API v2.1 (`PanelPluginApi::VERSION = 2.1`).
 2. Admin → **Plugins** → **Install Plugin** → `PrestonHager/DNS-Pterodactyl-Plugin` (or your fork URL).
 3. Open **Plugins → DNS Records → Settings** and paste configuration JSON (see below).
 4. Review permissions and click **Enable**.

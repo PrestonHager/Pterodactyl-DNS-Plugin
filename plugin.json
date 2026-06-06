@@ -4,7 +4,7 @@
   "version": "1.2.0",
   "entry": "Com\\Prestonhager\\Dns\\Plugin",
   "requires": {
-    "panelPluginApi": "2.0"
+    "panelPluginApi": "2.1"
   },
   "permissions": [
     "events.subscribe",
